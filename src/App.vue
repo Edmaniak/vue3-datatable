@@ -1,16 +1,21 @@
 <template>
   <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js + TypeScript App"/>
+  <DataTable :data="example" :paginate="3" :default-page="1"/>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
 import HelloWorld from './components/HelloWorld.vue';
+import DataTable from '@/components/DataTable.vue';
+import example from '@/assets/example';
 
 export default defineComponent({
   name: 'App',
   components: {
-    HelloWorld
+    DataTable
+  },
+  setup() {
+    return {example}
   }
 });
 </script>
