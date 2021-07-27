@@ -1,11 +1,10 @@
 <template>
   <img alt="Vue logo" src="./assets/logo.png">
-  <DataTable :data="example" :paginate="3" :default-page="1"/>
+  <DataTable :data="example" :keys="keys"/>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import HelloWorld from './components/HelloWorld.vue';
 import DataTable from '@/components/DataTable.vue';
 import example from '@/assets/example';
 
@@ -15,7 +14,8 @@ export default defineComponent({
     DataTable
   },
   setup() {
-    return {example}
+    const keys = [{key:'supplier', title: 'Dodavatel', filter: 'input'}, {key:'quantity', title: 'Pocet'}]
+    return {example, keys}
   }
 });
 </script>

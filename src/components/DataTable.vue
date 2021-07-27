@@ -1,28 +1,29 @@
 <template>
   <div class="data-table">
     <div v-if="!$slots['top']" class="data-table__top">
-      <div class="data-table__search">
-        <input v-model="search" type="text">
+      <div v-if="search" class="data-table__search">
+        <input v-model="searchInput" type="text">
       </div>
     </div>
     <slot name="top"/>
     <div class="data-table__body">
-      <div class="data-table__legend" :style="`${columnsTemplate}`">
-        <div @click="sort(key.key)" :key="key.key" v-for="key in autoCollectedKeys" class="data-table__legend-item"
+      <div v-if="legend" class="data-table__legend" :style="`${columnsTemplate}`">
+        <div :key="key.key" v-for="key in autoCollectedKeys" class="data-table__legend-item"
              :class="`data-table__legend-item-${key.key}`">
-          <span class="data-table__column-title">{{ key.title }}</span>
-          <span v-if="sort || key.sort" class="data-table__column-sort"
+          <span @click="sort(key.key)" class="data-table__column-title">{{ key.title || key.key }}</span>
+          <span @click="sort(key.key)" v-if="sort || key.sort" class="data-table__column-sort"
                 :class="{'data-table__column-sort--asc': activeSorting[key.key] === 'ASC'}">&#9662;</span>
+          <span class="data-table__cancel-sort" v-if="activeSorting[key.key]" @click="cancelSort(key.key)">✕</span>
         </div>
       </div>
-      <div class="data-table__filter" :style="`${columnsTemplate}`">
+      <div v-if="filter || autoCollectedKeys.some(key => key.hasOwnProperty('filter'))" class="data-table__filter" :style="`${columnsTemplate}`">
         <div class="data-table__filter-item" :key="key.key" v-for="key in autoCollectedKeys">
-          <div class="data-table__filter-input">
+          <div v-if="filter?.includes('input') || key.filter?.includes('input')" class="data-table__filter-input">
             <input @input="updateTrigger++" v-model="searchColumns[key.key]" type="text">
           </div>
-          <div class="data-table__filter-select">
+          <div v-if="filter?.includes('select') || key.filter?.includes('select')" class="data-table__filter-select">
             <select @select="updateTrigger++" v-model="searchColumns[key.key]">
-              <option></option>
+              <option>{{localization.noOption}}</option>
               <option :key="option" v-for="option in autoCollectedOptions[key.key]">
                 {{option}}
               </option>
@@ -32,22 +33,38 @@
       </div>
       <table class="data-table__table" :style="`${columnsTemplate}`">
         <tr class="data-table__row" :class="`data-table__row-${i}`" :key="i" v-for="(item, i) in filteredData">
-          <td class="data-table__cell" :key="`${item}${key}`" v-for="key in autoCollectedKeys"
-              :class="`data-table__cell-${key.key}`">
-            {{ filteredData[i][key.key] }}
-          </td>
+          <template :key="`${item}${key}`" v-for="key in autoCollectedKeys">
+            <td v-if="!$slots[`cell-${key.key}`]" class="data-table__cell" :class="`data-table__cell-${key.key}`">
+              {{ filteredData[i][key.key] }}
+            </td>
+            <slot v-else :name="`cell-${key.key}`" v-bind:data="{data: filteredData, index: i, item: filteredData[i][key.key]}"/>
+          </template>
         </tr>
       </table>
     </div>
     <div v-if="!$slots['footer']" class="data-table__footer">
-      <div class="data-table__pagination">
-        <div @click="setPage(1)" class="data-table__first">First</div>
-        <div @click="setPage(activePage - 1)" class="data-table__prev">Prev</div>
-        <div class="data-table__pages"></div>
-        <div @click="setPage(activePage + 1)" class="data-table__next">Next</div>
-        <div @click="setPage(pagesCount)" class="data-table__last">Last</div>
+      <div v-if="paginate" class="data-table__pagination">
+        <div @click="setPage(1)" class="data-table__first">
+          <template v-if="!$slots['pagination-first']">{{ localization.firstPage }}</template>
+          <slot v-else name="pagination-first"/>
+        </div>
+        <div @click="setPage(activePage - 1)" class="data-table__prev">
+          <template v-if="!$slots['pagination-prev']">{{ localization.prevPage }}</template>
+          <slot v-else name="pagination-prev"/>
+        </div>
+        <div class="data-table__pages">
+          <template v-if="!$slots['pagination-pages']"></template>
+          <slot v-else name="pagination-pages"/>
+        </div>
+        <div @click="setPage(activePage + 1)" class="data-table__next">
+          <template v-if="!$slots['pagination-next']"> {{ localization.nextPage }}</template>
+          <slot v-else name="pagination-next"/>
+        </div>
+        <div @click="setPage(pagesCount)" class="data-table__last">
+          <template v-if="!$slots['pagination-last']">{{ localization.lastPage }}</template>
+          <slot v-else name="pagination-last"/>
+        </div>
       </div>
-      {{ pagesCount }}
     </div>
     <slot name="footer"/>
   </div>
@@ -56,6 +73,8 @@
 <script lang="ts">
 import {computed, defineComponent, PropType, ref, watch} from 'vue';
 import Key from '@/model/Key';
+import Localization from '@/model/Localization';
+import en from '@/locales/en';
 
 export default defineComponent({
   name: 'DataTable',
@@ -67,31 +86,72 @@ export default defineComponent({
       type: Array,
       default: () => []
     },
+    /**
+     * Columns settings for data
+     * includes filtering, sorting
+     */
     keys: {
       type: Array as PropType<Array<Key>>,
       default: () => []
     },
+    /**
+     * Minimum column width for column. Maximum width is calculated from fraction.
+     */
     minColumnWidth: {
       type: String,
       default: '150px'
     },
-    paginationOptions: {
-      type: Array as PropType<Array<number | string>>,
-      default: () => [1, 3, 5, 10, 20, 30, 40, 50, 60, 100, 200 - 1]
-    },
+    /**
+     * The number of items on one page. It also serves as information about paginating at all.
+     */
     paginate: {
       type: Number
     },
+    /**
+     * Allows sorting for each individual column. It is overrided when there is "sort" option on
+     * specific key in keys prop.
+     */
     sort: {
       type: Boolean,
       default: true
     },
+    /**
+     * Sets filtering option. It accepts strings "input" and "select" with whatever divider.
+     * It then allows the filtering options accordingly.
+     */
+    filter: {
+      type: String
+    },
+    /**
+     * Shows the search input.
+     */
+    search: {
+      type: Boolean,
+      default: false
+    },
+    /**
+     * Sets the default page. Works only if the pagination is allowed.
+     */
     defaultPage: {
       type: Number,
       default: 1
     },
+    legend: {
+      type: Boolean,
+      default: true
+    },
+    /**
+     * Default sort options for columns. Works only with sort option turned on.
+     */
     defaultSort: {
       type: Object as PropType<Record<string, 'ASC' | 'DESC'>>,
+    },
+    /**
+     * Allows to localize all the texts used by data table.
+     */
+    localization: {
+      type: Object as PropType<Localization>,
+      default: () => en
     }
   },
   setup (props) {
@@ -109,17 +169,18 @@ export default defineComponent({
     const activeSorting = ref<Record<string, 'ASC' | 'DESC'>>(props.defaultSort ? props.defaultSort : {})
 
     // FILTERING
-    const search = ref<string | null>(null)
+    const searchInput = ref<string | null>(null)
     const searchColumns = ref<Record<string, string>>({'unit_cost': ''})
 
-    const columnsTemplate = computed<any>(() => {
+    const columnsTemplate = computed<string>(() => {
       let cssRule = 'grid-template-columns:'
 
       let fractions: any = {}
       props.data.forEach((d: any) => {
-        Object.values(d).forEach(((value: any, i: number) => {
-          if (value.toString().length > fractions[i] || !fractions[i]) {
-            fractions[i] = value.toString().length
+        console.log(d)
+        autoCollectedKeys.value.forEach(((key: Key, i: number) => {
+          if (d[key.key].toString().length > fractions[i] || !fractions[i]) {
+            fractions[i] = d[key.key].toString().length
           }
         }))
       })
@@ -165,8 +226,8 @@ export default defineComponent({
       }
 
       // Search
-      if (search.value) {
-        tempData = tempData.filter((item: any) => Object.values(item).some((value: any) => value.toString().search(search.value) > -1))
+      if (searchInput.value) {
+        tempData = tempData.filter((item: any) => Object.values(item).some((value: any) => value.toString().search(searchInput.value) > -1))
       }
 
       if (searchColumns.value) {
@@ -209,7 +270,6 @@ export default defineComponent({
     })
 
     const autoCollectedOptions = computed<Record<string, Array<string>>>(() => {
-      if (props.keys.length > 0) return {}
       if (props.data.length === 0) return {}
       const collectedOptions: Record<string, Array<string>> = {}
       autoCollectedKeys.value.forEach((key: Key) => {
@@ -228,11 +288,16 @@ export default defineComponent({
       else activeSorting.value[sortKey] = sort ? sort : 'DESC'
     }
 
+    const cancelSort = (sortKey: string) => {
+      console.log(sortKey)
+      delete activeSorting.value[sortKey]
+      console.log(activeSorting.value)
+    }
+
     const setPage = (page: number) => {
       if (page > 0 && page <= pagesCount.value) {
         activePage.value = page
       }
-
     }
 
     return {
@@ -244,10 +309,11 @@ export default defineComponent({
       activePage,
       activeSorting,
       setPage,
-      search,
+      searchInput,
       searchColumns,
       updateTrigger,
-      autoCollectedOptions
+      autoCollectedOptions,
+      cancelSort
     }
   }
 })
