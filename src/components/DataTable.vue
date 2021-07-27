@@ -10,10 +10,12 @@
       <div v-if="legend" class="data-table__legend" :style="`${columnsTemplate}`">
         <div :key="key.key" v-for="key in autoCollectedKeys" class="data-table__legend-item"
              :class="`data-table__legend-item-${key.key}`">
-          <span @click="sort(key.key)" class="data-table__column-title">{{ key.title || key.key }}</span>
-          <span @click="sort(key.key)" v-if="sort || key.sort" class="data-table__column-sort"
-                :class="{'data-table__column-sort--asc': activeSorting[key.key] === 'ASC'}">&#9662;</span>
-          <span class="data-table__cancel-sort" v-if="activeSorting[key.key]" @click="cancelSort(key.key)">✕</span>
+          <span @click="sortData(key.key)" class="data-table__column-title">{{ key.title || key.key }}</span>
+          <template v-if="sort || key.sort">
+            <span @click="sortData(key.key)"  class="data-table__column-sort"
+                  :class="{'data-table__column-sort--asc': activeSorting[key.key] === 'ASC'}">&#9662;</span>
+            <span class="data-table__cancel-sort" v-if="activeSorting[key.key]" @click="cancelSort(key.key)">✕</span>
+          </template>
         </div>
       </div>
       <div v-if="filter || autoCollectedKeys.some(key => key.hasOwnProperty('filter'))" class="data-table__filter" :style="`${columnsTemplate}`">
@@ -37,18 +39,23 @@
             <td v-if="!$slots[`cell-${key.key}`]" class="data-table__cell" :class="`data-table__cell-${key.key}`">
               {{ filteredData[i][key.key] }}
             </td>
-            <slot v-else :name="`cell-${key.key}`" v-bind:data="{data: filteredData, index: i, item: filteredData[i][key.key]}"/>
+            <td v-else class="data-table__cell">
+              <slot :name="`cell-${key.key}`" v-bind:data="{data: filteredData, index: i, item: filteredData[i][key.key]}"/>
+            </td>
           </template>
         </tr>
       </table>
     </div>
     <div v-if="!$slots['footer']" class="data-table__footer">
+      <div class="data-table__status">
+        <span>{{ activePage }}</span><span>&nbsp;{{ localization.statusOf }}&nbsp;</span><span>{{pagesCount}}</span>
+      </div>
       <div v-if="paginate" class="data-table__pagination">
-        <div @click="setPage(1)" class="data-table__first">
+        <div @click="setPage(1)" class="data-table__first" :class="{'disabled': activePage === 1}">
           <template v-if="!$slots['pagination-first']">{{ localization.firstPage }}</template>
           <slot v-else name="pagination-first"/>
         </div>
-        <div @click="setPage(activePage - 1)" class="data-table__prev">
+        <div @click="setPage(activePage - 1)" class="data-table__prev" :class="{'disabled': activePage === 1}">
           <template v-if="!$slots['pagination-prev']">{{ localization.prevPage }}</template>
           <slot v-else name="pagination-prev"/>
         </div>
@@ -56,11 +63,11 @@
           <template v-if="!$slots['pagination-pages']"></template>
           <slot v-else name="pagination-pages"/>
         </div>
-        <div @click="setPage(activePage + 1)" class="data-table__next">
+        <div @click="setPage(activePage + 1)" class="data-table__next" :class="{'disabled': activePage === pagesCount}">
           <template v-if="!$slots['pagination-next']"> {{ localization.nextPage }}</template>
           <slot v-else name="pagination-next"/>
         </div>
-        <div @click="setPage(pagesCount)" class="data-table__last">
+        <div @click="setPage(pagesCount)" class="data-table__last" :class="{'disabled': activePage === pagesCount}">
           <template v-if="!$slots['pagination-last']">{{ localization.lastPage }}</template>
           <slot v-else name="pagination-last"/>
         </div>
@@ -71,10 +78,11 @@
 </template>
 
 <script lang="ts">
-import {computed, defineComponent, PropType, ref, watch} from 'vue';
+import {computed, defineComponent, PropType, ref} from 'vue';
 import Key from '@/model/Key';
 import Localization from '@/model/Localization';
 import en from '@/locales/en';
+import Events from '@/model/Events';
 
 export default defineComponent({
   name: 'DataTable',
@@ -154,7 +162,7 @@ export default defineComponent({
       default: () => en
     }
   },
-  setup (props) {
+  setup (props, {emit}) {
 
     const updateTrigger = ref<number>(0)
 
@@ -228,6 +236,7 @@ export default defineComponent({
       // Search
       if (searchInput.value) {
         tempData = tempData.filter((item: any) => Object.values(item).some((value: any) => value.toString().search(searchInput.value) > -1))
+        emit(Events.SEARCH, {search: searchInput.value, data: filteredData})
       }
 
       if (searchColumns.value) {
@@ -236,6 +245,7 @@ export default defineComponent({
             tempData = tempData.filter((item: any) => Object.values(item).some((value: any) => value.toString().search(searchColumns.value[key]) > -1))
           }
         })
+        emit(Events.COLUMN_SEARCH, {search: searchColumns.value, data: filteredData})
       }
 
 
@@ -247,13 +257,9 @@ export default defineComponent({
         })
       }
 
-
+      emit(Events.CHANGE, {data: filteredData})
       return tempData
 
-    })
-
-    watch(() => searchColumns.value, (v) => {
-      console.log(v)
     })
 
     const autoCollectedKeys = computed<Array<Key>>(() => {
@@ -283,20 +289,20 @@ export default defineComponent({
       return collectedOptions
     })
 
-    const sort = (sortKey: string, sort?: 'ASC' | 'DESC') => {
+    const sortData = (sortKey: string, sort?: 'ASC' | 'DESC') => {
       if (activeSorting.value[sortKey]) activeSorting.value[sortKey] = activeSorting.value[sortKey] === 'ASC' ? 'DESC' : 'ASC'
       else activeSorting.value[sortKey] = sort ? sort : 'DESC'
+      emit(Events.SORT_CHANGED, {sort: activeSorting.value, data: filteredData})
     }
 
     const cancelSort = (sortKey: string) => {
-      console.log(sortKey)
       delete activeSorting.value[sortKey]
-      console.log(activeSorting.value)
     }
 
     const setPage = (page: number) => {
       if (page > 0 && page <= pagesCount.value) {
         activePage.value = page
+        emit(Events.PAGE_CHANGED, {page, data: filteredData})
       }
     }
 
@@ -305,7 +311,7 @@ export default defineComponent({
       filteredData,
       autoCollectedKeys,
       pagesCount,
-      sort,
+      sortData,
       activePage,
       activeSorting,
       setPage,
@@ -389,16 +395,26 @@ export default defineComponent({
   &__pagination {
     padding: 6px;
     display: flex;
+    user-select: none;
 
     > div {
       cursor: pointer;
+      margin: 0 3px;
     }
+  }
+  &__status {
+    padding: 6px;
   }
 
   &__top {
     padding: 6px;
     display: flex;
     justify-content: flex-end;
+  }
+
+  .disabled {
+    color: #BBBBBB;
+    pointer-events: none;
   }
 
 }

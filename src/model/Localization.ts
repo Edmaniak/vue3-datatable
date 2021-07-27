@@ -5,5 +5,6 @@ export default interface Localization {
     lastPage: string,
     nextPage: string,
     prevPage: string,
-    noOption: string
+    noOption: string,
+    statusOf: string
 }

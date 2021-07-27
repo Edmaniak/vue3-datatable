@@ -1,6 +1,10 @@
 <template>
   <img alt="Vue logo" src="./assets/logo.png">
-  <DataTable :data="example" :keys="keys"/>
+  <DataTable :sort="false" :paginate="1" :data="example" :keys="keys">
+    <template #cell-quantity="data">
+      <b>{{data.data.item}}</b>
+    </template>
+  </DataTable>
 </template>
 
 <script lang="ts">

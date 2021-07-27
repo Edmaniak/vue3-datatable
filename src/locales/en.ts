@@ -5,5 +5,6 @@ export default {
     lastPage: 'last',
     nextPage: 'next',
     prevPage: 'prev',
-    noOption: ''
+    noOption: '',
+    statusOf: 'of'
 }
