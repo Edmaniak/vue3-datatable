@@ -1,8 +1,10 @@
 <template>
   <div class="data-table">
     <div v-if="!$slots['top']" class="data-table__top">
-      <div v-if="search" class="data-table__search">
-        <input v-model="searchInput" type="text">
+      <div v-if="showSearch" class="data-table__search">
+        <label class="data-table__search-label">{{ localization.searchLabel }}</label>
+        <input class="data-table__search-input" v-model="searchInput" :placeholder="localization.searchPlaceholder"
+               type="text">
       </div>
     </div>
     <slot name="top"/>
@@ -12,22 +14,23 @@
              :class="`data-table__legend-item-${key.key}`">
           <span @click="sortData(key.key)" class="data-table__column-title">{{ key.title || key.key }}</span>
           <template v-if="sort || key.sort">
-            <span @click="sortData(key.key)"  class="data-table__column-sort"
+            <span @click="sortData(key.key)" class="data-table__column-sort"
                   :class="{'data-table__column-sort--asc': activeSorting[key.key] === 'ASC'}">&#9662;</span>
             <span class="data-table__cancel-sort" v-if="activeSorting[key.key]" @click="cancelSort(key.key)">✕</span>
           </template>
         </div>
       </div>
-      <div v-if="filter || autoCollectedKeys.some(key => key.hasOwnProperty('filter'))" class="data-table__filter" :style="`${columnsTemplate}`">
+      <div v-if="showFilter || autoCollectedKeys.some(key => key.hasOwnProperty('filter'))" class="data-table__filter"
+           :style="`${columnsTemplate}`">
         <div class="data-table__filter-item" :key="key.key" v-for="key in autoCollectedKeys">
-          <div v-if="filter?.includes('input') || key.filter?.includes('input')" class="data-table__filter-input">
+          <div v-if="showFilter?.includes('input') || key.filter?.includes('input')" class="data-table__filter-input">
             <input @input="updateTrigger++" v-model="searchColumns[key.key]" type="text">
           </div>
-          <div v-if="filter?.includes('select') || key.filter?.includes('select')" class="data-table__filter-select">
+          <div v-if="showFilter?.includes('select') || key.filter?.includes('select')" class="data-table__filter-select">
             <select @select="updateTrigger++" v-model="searchColumns[key.key]">
-              <option>{{localization.noOption}}</option>
+              <option>{{ localization.noOption }}</option>
               <option :key="option" v-for="option in autoCollectedOptions[key.key]">
-                {{option}}
+                {{ option }}
               </option>
             </select>
           </div>
@@ -40,7 +43,8 @@
               {{ filteredData[i][key.key] }}
             </td>
             <td v-else class="data-table__cell">
-              <slot :name="`cell-${key.key}`" v-bind:data="{data: filteredData, index: i, item: filteredData[i][key.key]}"/>
+              <slot :name="`cell-${key.key}`"
+                    v-bind:data="{data: filteredData, index: i, item: filteredData[i][key.key]}"/>
             </td>
           </template>
         </tr>
@@ -48,7 +52,7 @@
     </div>
     <div v-if="!$slots['footer']" class="data-table__footer">
       <div class="data-table__status">
-        <span>{{ activePage }}</span><span>&nbsp;{{ localization.statusOf }}&nbsp;</span><span>{{pagesCount}}</span>
+        <span>{{ activePage }}</span><span>&nbsp;{{ localization.statusOf }}&nbsp;</span><span>{{ pagesCount }}</span>
       </div>
       <div v-if="paginate" class="data-table__pagination">
         <div @click="setPage(1)" class="data-table__first" :class="{'disabled': activePage === 1}">
@@ -78,7 +82,7 @@
 </template>
 
 <script lang="ts">
-import {computed, defineComponent, PropType, ref} from 'vue';
+import {computed, defineComponent, PropType, ref, watch} from 'vue';
 import Key from '@/model/Key';
 import Localization from '@/model/Localization';
 import en from '@/locales/en';
@@ -127,23 +131,39 @@ export default defineComponent({
      * Sets filtering option. It accepts strings "input" and "select" with whatever divider.
      * It then allows the filtering options accordingly.
      */
-    filter: {
+    showFilter: {
       type: String
+    },
+    /**
+     * Defines model of individual column filter.
+     */
+    filter: {
+      type: Object
+    },
+    /**
+     * Defines the model of search input from outside scope.
+     */
+    search: {
+      type: String || null,
+      default: null
     },
     /**
      * Shows the search input.
      */
-    search: {
+    showSearch: {
       type: Boolean,
       default: false
     },
     /**
      * Sets the default page. Works only if the pagination is allowed.
      */
-    defaultPage: {
+    page: {
       type: Number,
       default: 1
     },
+    /**
+     * Triggers visibility for legend
+     */
     legend: {
       type: Boolean,
       default: true
@@ -168,24 +188,23 @@ export default defineComponent({
 
     // PAGINATION
     const activePagination = ref<number | undefined>(props.paginate)
-    const activePage = ref<number>(props.defaultPage)
+    const activePage = ref<number>(props.page)
     const pagesCount = computed<number>(() => {
-      return activePagination.value ? props.data.length / activePagination.value : 1
+      return activePagination.value ? Math.ceil(filteredData.value.length / activePagination.value) : 1
     })
 
     // SORTING
     const activeSorting = ref<Record<string, 'ASC' | 'DESC'>>(props.defaultSort ? props.defaultSort : {})
 
     // FILTERING
-    const searchInput = ref<string | null>(null)
-    const searchColumns = ref<Record<string, string>>({'unit_cost': ''})
+    const searchInput = ref<string | null>(props.search)
+    const searchColumns = ref<Record<string, string>>(props.filter || {})
 
     const columnsTemplate = computed<string>(() => {
       let cssRule = 'grid-template-columns:'
 
       let fractions: any = {}
       props.data.forEach((d: any) => {
-        console.log(d)
         autoCollectedKeys.value.forEach(((key: Key, i: number) => {
           if (d[key.key].toString().length > fractions[i] || !fractions[i]) {
             fractions[i] = d[key.key].toString().length
@@ -237,6 +256,7 @@ export default defineComponent({
       if (searchInput.value) {
         tempData = tempData.filter((item: any) => Object.values(item).some((value: any) => value.toString().search(searchInput.value) > -1))
         emit(Events.SEARCH, {search: searchInput.value, data: filteredData})
+        emit(Events.UPDATE_SEARCH, searchInput.value)
       }
 
       if (searchColumns.value) {
@@ -246,6 +266,7 @@ export default defineComponent({
           }
         })
         emit(Events.COLUMN_SEARCH, {search: searchColumns.value, data: filteredData})
+        emit(Events.UPDATE_FILTER, searchColumns.value)
       }
 
 
@@ -265,6 +286,7 @@ export default defineComponent({
     const autoCollectedKeys = computed<Array<Key>>(() => {
       if (props.keys.length > 0) return props.keys
       if (props.data.length === 0) return []
+
       //@ts-ignore
       const collectedKeys = Object.keys(props.data[0]).map((key: string) => ({title: key, key}))
       props.data.forEach((d: any) => {
@@ -301,10 +323,13 @@ export default defineComponent({
 
     const setPage = (page: number) => {
       if (page > 0 && page <= pagesCount.value) {
-        activePage.value = page
         emit(Events.PAGE_CHANGED, {page, data: filteredData})
+        emit(Events.UPDATE_PAGE, page)
       }
     }
+
+    watch(() => props.page, page => activePage.value = page)
+    watch(() => props.search, text => searchInput.value = text)
 
     return {
       columnsTemplate,
@@ -321,7 +346,17 @@ export default defineComponent({
       autoCollectedOptions,
       cancelSort
     }
-  }
+  },
+  emits: [
+    Events.PAGE_CHANGED,
+    Events.CHANGE,
+    Events.SORT_CHANGED,
+    Events.UPDATE_PAGE,
+    Events.SEARCH,
+    Events.COLUMN_SEARCH,
+    Events.UPDATE_SEARCH,
+    Events.UPDATE_FILTER
+  ]
 })
 </script>
 
@@ -329,6 +364,7 @@ export default defineComponent({
 * {
   box-sizing: border-box;
 }
+
 .data-table {
 
   &__table {
@@ -356,6 +392,11 @@ export default defineComponent({
     }
   }
 
+  &__cancel-sort {
+    cursor: pointer;
+    margin-left: 3px;
+  }
+
   &__row {
     display: contents;
   }
@@ -363,6 +404,11 @@ export default defineComponent({
   &__cell {
     display: flex;
     padding: 6px;
+  }
+
+  &__search-label {
+    display: block;
+    text-align: left;
   }
 
   &__filter {
@@ -402,6 +448,7 @@ export default defineComponent({
       margin: 0 3px;
     }
   }
+
   &__status {
     padding: 6px;
   }

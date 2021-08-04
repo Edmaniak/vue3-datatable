@@ -1,10 +1,19 @@
 {
-  "name": "datatable",
+  "name": "vue3-datatable",
   "version": "0.1.0",
+  "main": "./lib/datatable.umd.min.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "private": true,
+  "repository": "https://github.com/Edmaniak/vue3-datatable.git",
+  "author": "Adam Ouhrabka",
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
+    "build": "npm run build:component && npm run build:lib",
+    "build:component": "vue-cli-service build --target lib --dest lib/components --name datatable src/components/DataTable.vue",
+    "build:lib": "vue-cli-service build --target lib src/lib.js --mode production",
     "test:unit": "vue-cli-service test:unit",
     "lint": "vue-cli-service lint"
   },
